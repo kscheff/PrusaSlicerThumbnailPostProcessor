@@ -20,7 +20,7 @@ class ThumbnailProcessor:
     tmp_thumb_dir = os.path.dirname(os.path.realpath(__file__))
     tmp_thumb_path = os.path.join(tmp_thumb_dir, tmp_thumb_name)
 
-    def remove_thumbnail_data(self, file: str) -> None:
+    def remove_thumbnail_data(self, file: str) -> int:
         with open(file, "r", encoding="utf-8") as fopen:
             data = fopen.readlines()
 
@@ -50,6 +50,8 @@ class ThumbnailProcessor:
         # open the file again in write-only mode and write the modified content
         with open(file, mode="w", encoding="utf-8") as fopen:
             fopen.writelines(data)
+        
+        return thumb_start
 
     def extract_thumbnail_image(self, file: str) -> None:
         with open(file, mode="r", encoding="utf-8") as fopen:
@@ -84,7 +86,7 @@ class ThumbnailProcessor:
 
         return b64
 
-    def write_thumbnail_metadata(self, file: str, b64: str):
+    def write_thumbnail_metadata(self, file: str, b64: str, thumb_start: int):
         thumbnail = wrap(b64, 78)
         thumbnail_data = ["\n" ";\n",
                           f"; thumbnail begin {self.thumbnail_size} {self.new_thumbnail_char_count}\n"]
@@ -93,8 +95,18 @@ class ThumbnailProcessor:
             thumbnail_data.append(f"; {line}\n")
         thumbnail_data.append("; thumbnail end")
 
-        with open(file, mode="a", encoding="utf-8") as fopen:
-            fopen.writelines(thumbnail_data)
+        #with open(file, mode="a", encoding="utf-8") as fopen:
+        #    fopen.writelines(thumbnail_data)
+            
+        with open(file, mode="r", encoding="utf-8") as fopen:
+            data = fopen.readlines()
+
+        # Insert new metadata at the same line where original metadata started
+        data[thumb_start:thumb_start] = thumbnail_data
+
+        # Open the file again in write-only mode and write	 the modified content
+        with open(file, mode="w", encoding="utf-8") as fopen:
+            fopen.writelines(data)
 
     def _convert_hex_to_hsv(self, hex_color: str) -> tuple:
         if hex_color.startswith("#"):
@@ -124,16 +136,16 @@ class ThumbnailProcessor:
             hue = pixel[0] / 255
             saturation = pixel[1] / 255
             value = pixel[2] / 255
-            alpha = 255
+            alpha = 1
 
             # set the alpha channel to zero for pixels whose saturation falls below a given threshold.
             # the alpha channel cannot be taken into account in the hsv color space, 
             # but is used further down in the rgba color space.
-            if saturation < 0.60:
+            if saturation < 0.6:
                 alpha = 0
 
             # replace original hue, saturation and value
-            if hue > 0:
+            if saturation >= 0.6:
                 hue = hsv_from_hex[0] # hue from color
                 saturation = hsv_from_hex[1] # saturation from color
 
@@ -159,8 +171,8 @@ class ThumbnailProcessor:
 
             # remove all background pixel
             if rm_bg:
-             alpha = pixel[3]
-
+                alpha = pixel[3] * 255
+            
             rgba_pixel = (red, green, blue, alpha)
             rgba_data.append(rgba_pixel)
 
@@ -185,11 +197,11 @@ def main(file: str, rm_bg: bool) -> None:
     thumbnail.modify_thumbnail(rm_bg)
 
     # remove the original thumbnail metadata
-    thumbnail.remove_thumbnail_data(file)
+    thumb_start = thumbnail.remove_thumbnail_data(file)
 
     # encode updated thumbnail metadata and write
     # the data at the end of the gcode file
-    thumbnail.write_thumbnail_metadata(file, thumbnail.encode_image())
+    thumbnail.write_thumbnail_metadata(file, thumbnail.encode_image(), thumb_start)
 
     # delete the temporary thumbnail
     thumbnail.delete_tmp_thumb()
