@@ -128,24 +128,25 @@ class ThumbnailProcessor:
         hex_input = self.filament_color
         hsv_from_hex = self._convert_hex_to_hsv(hex_input)
 
-        # OPEN IMAGE IN HSV MODE
-        image = Image.open(file, mode="r").convert(mode="HSV").getdata()
+        # open image in RGBA mode to preserve alpha channel
+        image = Image.open(file, mode="r").convert(mode="RGBA").getdata()
 
         hsv_data = []
-        for pixel in image:
+        for rgba in image:
+            pixel = colorsys.rgb_to_hsv(rgba[0], rgba[1], rgba[2])
             hue = pixel[0] / 255
             saturation = pixel[1] / 255
             value = pixel[2] / 255
-            alpha = 1
+            alpha = rgba[3]
 
             # set the alpha channel to zero for pixels whose saturation falls below a given threshold.
             # the alpha channel cannot be taken into account in the hsv color space, 
             # but is used further down in the rgba color space.
-            if saturation < 0.6:
-                alpha = 0
+            #if saturation == 0:
+            #    alpha = 0
 
             # replace original hue, saturation and value
-            if saturation >= 0.6:
+            if alpha > 0:
                 hue = hsv_from_hex[0] # hue from color
                 saturation = hsv_from_hex[1] # saturation from color
 
@@ -169,15 +170,15 @@ class ThumbnailProcessor:
             blue = int(rgb[2] * 255)
             alpha = 255
 
-            # remove all background pixel
+            # restore alpha channel
             if rm_bg:
-                alpha = pixel[3] * 255
+                alpha = pixel[3]
             
             rgba_pixel = (red, green, blue, alpha)
             rgba_data.append(rgba_pixel)
 
         # WRITE NEW IMAGE WITH MODIFIED DATA
-        new_image = Image.open(file, mode="r").convert(mode="RGBA")
+        new_image = Image.new("RGBA", image.size)
         new_image.putdata(rgba_data)
         new_image.save(file, "PNG")
 
